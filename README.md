@@ -13,7 +13,8 @@ cp .env.example .env  # 根据实际情况调整密钥路径和密码
 npm install
 npm run sync          # dry-run，看看有哪些表需要变更
 npm run sync:apply    # 真正执行同步（会 drop 重建）
-npm run sync -- --data table_a table_b   # 指定表同步数据（默认仅同步结构）
+npm run sync -- --apply --data table_a table_b   # 指定表同步数据
+npm run sync -- --include table_a table_b --data table_a table_b --apply # 仅处理 table_a、table_b 这几个表，且在结构同步后清空并复制其数据
 ```
 
 也可以直接带参数：
