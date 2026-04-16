@@ -31,14 +31,20 @@ const argv = await yargs(hideBin(process.argv))
     string: true,
     describe: '同步指定表的数据（会先清空再写入），多个表用空格分隔',
   })
+  .option('include-data', {
+    type: 'array',
+    string: true,
+    describe: '同时设定 --include 和 --data（避免重复输入表名），多个表用空格分隔',
+  })
   .strict()
   .help()
   .alias('h', 'help')
   .parseAsync();
 
-const include = (argv.include ?? []) as string[];
+const includeData = (argv['include-data'] ?? []) as string[];
+const include = [...new Set([...(argv.include ?? []), ...includeData])] as string[];
 const exclude = (argv.exclude ?? []) as string[];
-const dataTables = (argv.data ?? []) as string[];
+const dataTables = [...new Set([...(argv.data ?? []), ...includeData])] as string[];
 
 const config = loadConfig({
   apply: argv.apply,
