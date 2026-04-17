@@ -19,6 +19,11 @@ interface TableRow extends RowDataPacket {
   TABLE_NAME: string;
 }
 
+interface ColumnRow extends RowDataPacket {
+  Field: string;
+  Extra?: string;
+}
+
 const escapeId = (identifier: string): string => `\`${identifier.replace(/`/g, '``')}\``;
 
 const canonicalizeDDL = (ddl: string): string =>
@@ -56,6 +61,18 @@ const getRowCount = async (connection: Connection, table: string): Promise<numbe
   return count ?? 0;
 };
 
+const isGeneratedColumnExtra = (extra: string | undefined): boolean => {
+  if (!extra) return false;
+  const upper = extra.toUpperCase();
+  // Avoid matching DEFAULT_GENERATED; generated columns show up as VIRTUAL/STORED GENERATED.
+  return upper.includes('VIRTUAL GENERATED') || upper.includes('STORED GENERATED');
+};
+
+const getInsertableColumns = async (connection: Connection, table: string): Promise<string[]> => {
+  const [rows] = await connection.query<ColumnRow[]>(`SHOW FULL COLUMNS FROM ${escapeId(table)}`);
+  return rows.filter((row) => !isGeneratedColumnExtra(row.Extra)).map((row) => row.Field);
+};
+
 const copyTableData = async (
   remote: Connection,
   local: Connection,
@@ -67,14 +84,18 @@ const copyTableData = async (
     return getRowCount(remote, table);
   }
 
+  // MySQL generated columns cannot be assigned explicitly.
+  const columns = await getInsertableColumns(local, table);
+  if (columns.length === 0) {
+    throw new Error(`表 ${table} 没有可写列（可能全部是 generated columns），无法同步数据`);
+  }
+
   await disableForeignKeys();
   await local.execute(`TRUNCATE TABLE ${escapeId(table)}`);
-  const [rows] = await remote.query<RowDataPacket[]>(`SELECT * FROM ${escapeId(table)}`);
+
+  const selectList = columns.map((col) => escapeId(col)).join(', ');
+  const [rows] = await remote.query<RowDataPacket[]>(`SELECT ${selectList} FROM ${escapeId(table)}`);
   if (rows.length === 0) {
-    return 0;
-  }
-  const columns = Object.keys(rows[0]);
-  if (columns.length === 0) {
     return 0;
   }
 
